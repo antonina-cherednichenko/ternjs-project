@@ -1,0 +1,6 @@
+{
+"devDependencies": {
+    "tern": "0.18.0",
+    "acorn": "3.0.4" 
+  }
+}
