@@ -1,12 +1,10 @@
 var tern = require('tern');
-var path = require("path"),
-    fs = require("fs");
-var acorn = require('acorn');
+var path = require("path");
+var fs = require("fs");
 var walk = require("acorn/dist/walk");
-var infer = require('tern/lib/infer');
 
-var defnode = require('defnode');
 
+var files = ["data/test.js", "data/test1.js"];
 var localDir = process.cwd();
 var ternServer = null;
 
@@ -16,29 +14,23 @@ var out = {
     Docs: []
 }
 
-
 function initTernServer(files) {
     var ternOptions = {
         async: false,
         getFile: function(file) {
             return fs.readFileSync(path.resolve(localDir, file), "utf8");
         },
-        loadEagerly: [
-            "data/test.js",
-            "data/test1.js"
-        ],
         plugins: {
             "node": {},
             "requirejs": {},
             "modules": {},
             "es_modules": {},
-            "commonjs": {}
+            "commonjs": {},
+            "doc_comment": {}
         }
     };
     ternServer = new tern.Server(ternOptions);
 
-
-    console.error("Files = ", files)
     files.forEach(function(file) {
         ternServer.addFile(file);
     });
@@ -47,13 +39,7 @@ function initTernServer(files) {
         if (err) throw err;
         analyse_all();
     });
-    //console.error(ternServer);
-    //console.error(ternServer.files);
-
-    //console.error("CTX = ", infer.cx());
-
 }
-
 
 function getQueryInfo(file, offset, type, start) {
     var query = {
@@ -61,8 +47,10 @@ function getQueryInfo(file, offset, type, start) {
         start: start,
         end: offset,
         file: file,
-        origin: "data/test.js"
+        docFormat: "full"
     }
+
+    var res = null;
     ternServer.request({
         query: query,
         offset: offset
@@ -71,60 +59,50 @@ function getQueryInfo(file, offset, type, start) {
             console.error("Error returned from Tern 'definition' request: " + error);
             return;
         }
-        console.error("DATA for ", type, " = ", data);
-
+        res = data;
     });
+    return res;
 }
 
 function getType(file, offset, start) {
-    getQueryInfo(file, offset, "type", start);
+    return getQueryInfo(file, offset, "type", start);
 }
 
 function getDefinition(file, offset, start) {
-    getQueryInfo(file, offset, "definition", start);
+    return getQueryInfo(file, offset, "definition", start);
 }
 
 function getCompletions(file, offset, start) {
-    getQueryInfo(file, offset, "completions", start);
+    return getQueryInfo(file, offset, "completions", start);
 }
 
-function getDocumentation(file, offset) {
-    getQueryInfo(file, offset, "documentation");
+function getDocumentation(file, offset, start) {
+    return getQueryInfo(file, offset, "documentation", start);
 }
 
-var files = ["data/test.js", "data/test1.js"];
-
-initTernServer(files);
-
-function form_path(id) {
+function formPathFromId(id) {
     return id.sourceFile.name + "_" + id.start + "_" + id.end;
 }
 
+function formPathFromData(data) {
+    if (data.origin === undefined || data.start === undefined || data.end === undefined) {
+        return null;
+    } else {
+        return data.origin + "_" + data.start + "_" + data.end;
+    }
+}
 
 function analyse_all() {
 
     var searchVisitor = walk.make({
-        Function: function(node, st, c) {
+        Function: function(node, kind, c) {
             if (node.id) {
-                c(node.id, st);
-
-                //console.error("Function id = ", node.id);
-                //emit fn def here
-                var fnDef = {
-                    Path: form_path(node.id),
-                    Name: node.id.name,
-                    Kind: "fn",
-                    File: decl.sourceFile.name,
-                    DefStart: decl.id.start,
-                    DefEnd: decl.id.end,
-                    TreePath: form_path(decl.id)
-                }
-                out.Defs.push(fnDef);
+                c(node.id, "function");
             }
 
             for (var i = 0; i < node.params.length; ++i)
-                c(node.params[i], st);
-            c(node.body, st);
+                c(node.params[i], "param");
+            c(node.body, "");
         },
 
         // TryStatement: function(node, st, c) {
@@ -134,56 +112,87 @@ function analyse_all() {
 
         // },
 
-        VariableDeclaration: function(node, st, c) {
+        VariableDeclaration: function(node, kind, c) {
             for (var i = 0; i < node.declarations.length; ++i) {
                 var decl = node.declarations[i];
 
-                //emit var def here
-                var varDef = {
-                    Path: form_path(decl.id),
-                    Name: decl.id.name,
-                    Kind: "var",
-                    File: decl.sourceFile.name,
-                    DefStart: decl.id.start,
-                    DefEnd: decl.id.end,
-                    TreePath: form_path(decl.id)
-                }
-                out.Defs.push(varDef);
-
-                c(decl.id, st);
-                if (decl.init) c(decl.init, st);
+                c(decl.id, "var");
+                if (decl.init) c(decl.init, "");
             }
         },
-        MemberExpression: function(node, st, c) {
-           // console.error('member expr =', node);
-            c(node.object, st, "Expression");
-            c(node.property, st);
+        MemberExpression: function(node, kind, c) {
+            c(node.object, kind);
+            c(node.property, "property");
         },
-        ObjectExpression: function(node, st, c) {
+        ObjectExpression: function(node, kind, c) {
             for (var i = 0; i < node.properties.length; ++i) {
-                c(node.properties[i].value, st);
-                c(node.properties[i].key, st);
+                c(node.properties[i].value, kind);
+                c(node.properties[i].key, kind);
             }
         },
-        Identifier: function(node, file, c) {
-            //console.error("Here inside identifier = ", node);
-            var ref = {
-                DefPath: form_path(node),
-                Def: false,
-                File: node.sourceFile.name,
-                Start: node.start,
-                End: node.end
+        Identifier: function(node, kind, c) {
+            console.error("INFO for id = ", node.name, "WITH KIND = ", kind);
+            var pathForId = formPathFromId(node);
+            var data = getDefinition(node.sourceFile.name, node.end, node.start);
+            var pathForDef = formPathFromData(data);
+            if (pathForDef === null) {
+                console.error("!!!!!!!!!!!! Def data == NULL for ", node.name);
+                console.error("\n ========================== \n");
+                return;
             }
-            out.Refs.push(ref);
+
+            if (pathForDef === pathForId) {
+                //emit def here
+                var def = {
+                    Path: pathForId,
+                    Name: node.name,
+                    Kind: kind,
+                    File: node.sourceFile.name,
+                    DefStart: node.start,
+                    DefEnd: node.end,
+                    TreePath: pathForId
+                }
+                out.Defs.push(def);
+
+                //emit fake ref here
+                var ref = {
+                    DefPath: pathForId,
+                    Def: true,
+                    File: node.sourceFile.name,
+                    Start: node.start,
+                    End: node.end
+                }
+                out.Refs.push(ref);
+            } else {
+                //emit simple ref here
+                var ref = {
+                    DefPath: pathForId,
+                    Def: false,
+                    File: node.sourceFile.name,
+                    Start: node.start,
+                    End: node.end
+                }
+                out.Refs.push(ref);
+
+            }
+            // console.error("Here inside identifier = ", formPathFromId(node));
+            // console.error("Here inside id data = ", formPathFromData(data));
+            // console.error(data);
+            // console.error("TYPE = ", getType(node.sourceFile.name, node.end, node.start));
+            // console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
+            // console.error("\n ========================== \n");
+
         }
     });
 
 
     ternServer.files.forEach(function(file) {
-        //console.error(file.ast);
-        walk.recursive(file.ast, file, null, searchVisitor);
+        //console.error("AST = ", file.ast);
+        walk.recursive(file.ast, "ast", null, searchVisitor);
     });
 
     console.error("DEFS = ", out.Defs);
     console.error("REFS = ", out.Refs);
 }
+
+initTernServer(files);
