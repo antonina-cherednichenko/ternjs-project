@@ -143,6 +143,13 @@ function analyse_all() {
 
             if (pathForDef === pathForId) {
                 //emit def here
+                var type = getType(node.sourceFile.name, node.end, node.start);
+                var defData = {
+                    Type: type,
+                    Keyword: kind,
+                    Kind: kind,
+                    Separator: " "
+                };
                 var def = {
                     Path: pathForId,
                     Name: node.name,
@@ -150,8 +157,9 @@ function analyse_all() {
                     File: node.sourceFile.name,
                     DefStart: node.start,
                     DefEnd: node.end,
-                    TreePath: pathForId
-                }
+                    TreePath: pathForId,
+                    Data: data
+                };
                 out.Defs.push(def);
 
                 //emit fake ref here
