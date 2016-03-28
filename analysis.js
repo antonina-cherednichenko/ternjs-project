@@ -146,11 +146,11 @@ function analyse_all() {
         Identifier: function(node, kind, c) {
             var pathForId = formPathFromId(node);
             var data = getDefinition(node.sourceFile.name, node.end, node.start);
-            var doc = getDocumentation(node.sourceFile.name, node.end, node.start);
+            var documentation = getDocumentation(node.sourceFile.name, node.end, node.start);
             var pathForDef = formPathFromData(data);
             if (pathForDef === null) {
-                //console.error("!!!!!!!!!!!! Def data == NULL for ", node.name);
-                //console.error("\n ========================== \n");
+                console.error("!!!!!!!!!!!! Def data == NULL for ", node.name);
+                console.error("\n ========================== \n");
                 return;
             }
 
@@ -194,13 +194,24 @@ function analyse_all() {
                     End: node.end
                 }
                 out.Refs.push(ref);
+            }
+
+            if (documentation.doc !== undefined) {
+                var docData = {
+                    Path: pathForId,
+                    Format: "",
+                    Data: documentation.doc
+                }
+
+                out.Docs.push(docData);
 
             }
-            // console.error("Here inside identifier = ", formPathFromId(node));
+            // console.error("Identifier = ", node.name);
+            // // console.error("Here inside identifier = ", formPathFromId(node));
             // console.error("Here inside id data = ", formPathFromData(data));
-            // console.error(data);
+            // // console.error(data);
             // console.error("TYPE = ", getType(node.sourceFile.name, node.end, node.start));
-             console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
+            // console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
             // console.error("\n ========================== \n");
 
         }
@@ -212,9 +223,9 @@ function analyse_all() {
         walk.recursive(file.ast, "ast", null, searchVisitor);
     });
 
-    //console.error(JSON.stringify(out));
-    //console.error("DEFS = ", out.Defs);
-    //console.error("REFS = ", out.Refs);
+    console.error("DEFS = ", out.Defs);
+    console.error("REFS = ", out.Refs);
+    console.error("DOCS = ", out.Docs);
 }
 
 initTernServer(files);
