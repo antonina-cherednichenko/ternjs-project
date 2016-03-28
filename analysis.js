@@ -3,6 +3,13 @@ var path = require("path");
 var fs = require("fs");
 var walk = require("acorn/dist/walk");
 
+require('tern/plugin/doc_comment');
+require('tern/plugin/commonjs');
+require('tern/plugin/modules');
+require('tern/plugin/node');
+require('tern/plugin/node_resolve');
+require('tern/plugin/requirejs');
+
 
 var files = ["data/test.js", "data/test1.js"];
 var localDir = process.cwd();
@@ -15,18 +22,19 @@ var out = {
 }
 
 function initTernServer(files) {
+
     var ternOptions = {
         async: false,
         getFile: function(file) {
             return fs.readFileSync(path.resolve(localDir, file), "utf8");
         },
         plugins: {
-            "node": {},
-            "requirejs": {},
-            "modules": {},
-            "es_modules": {},
-            "commonjs": {},
-            "doc_comment": {}
+            node: true,
+            requirejs: true,
+            modules: true,
+            es_modules: true,
+            commonjs: true,
+            doc_comment: true
         }
     };
     ternServer = new tern.Server(ternOptions);
@@ -39,6 +47,8 @@ function initTernServer(files) {
         if (err) throw err;
         analyse_all();
     });
+    //console.error("TERN = ", ternServer);
+    //console.error(ternServer.docs);
 }
 
 function getQueryInfo(file, offset, type, start) {
@@ -96,6 +106,9 @@ function analyse_all() {
 
     var searchVisitor = walk.make({
         Function: function(node, kind, c) {
+
+            //var doc = getDocumentation(node.sourceFile.name, node.end, node.start);
+            //console.error(node);
             if (node.id) {
                 c(node.id, "function");
             }
@@ -131,13 +144,13 @@ function analyse_all() {
             }
         },
         Identifier: function(node, kind, c) {
-            console.error("INFO for id = ", node.name, "WITH KIND = ", kind);
             var pathForId = formPathFromId(node);
             var data = getDefinition(node.sourceFile.name, node.end, node.start);
+            var doc = getDocumentation(node.sourceFile.name, node.end, node.start);
             var pathForDef = formPathFromData(data);
             if (pathForDef === null) {
-                console.error("!!!!!!!!!!!! Def data == NULL for ", node.name);
-                console.error("\n ========================== \n");
+                //console.error("!!!!!!!!!!!! Def data == NULL for ", node.name);
+                //console.error("\n ========================== \n");
                 return;
             }
 
@@ -187,7 +200,7 @@ function analyse_all() {
             // console.error("Here inside id data = ", formPathFromData(data));
             // console.error(data);
             // console.error("TYPE = ", getType(node.sourceFile.name, node.end, node.start));
-            // console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
+             console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
             // console.error("\n ========================== \n");
 
         }
@@ -199,8 +212,9 @@ function analyse_all() {
         walk.recursive(file.ast, "ast", null, searchVisitor);
     });
 
-    console.error("DEFS = ", out.Defs);
-    console.error("REFS = ", out.Refs);
+    //console.error(JSON.stringify(out));
+    //console.error("DEFS = ", out.Defs);
+    //console.error("REFS = ", out.Refs);
 }
 
 initTernServer(files);
