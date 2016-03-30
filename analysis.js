@@ -10,10 +10,10 @@ require('tern/plugin/node');
 require('tern/plugin/node_resolve');
 require('tern/plugin/requirejs');
 
-
-var files = ["data/test.js", "data/test1.js"];
 var localDir = process.cwd();
 var ternServer = null;
+
+var files = ["data/test.js", "data/test1.js"];
 
 var out = {
     Defs: [],
@@ -21,8 +21,7 @@ var out = {
     Docs: []
 }
 
-function initTernServer(files) {
-
+module.exports.initTernServer = function(files) {
     var ternOptions = {
         async: false,
         getFile: function(file) {
@@ -43,12 +42,13 @@ function initTernServer(files) {
         ternServer.addFile(file);
     });
 
+    var data = null;
     ternServer.flush(function(err) {
         if (err) throw err;
-        analyse_all();
+        data = analyse_all();
     });
+    return data;
     //console.error("TERN = ", ternServer);
-    //console.error(ternServer.docs);
 }
 
 function getQueryInfo(file, offset, type, start) {
@@ -106,9 +106,6 @@ function analyse_all() {
 
     var searchVisitor = walk.make({
         Function: function(node, kind, c) {
-
-            //var doc = getDocumentation(node.sourceFile.name, node.end, node.start);
-            //console.error(node);
             if (node.id) {
                 c(node.id, "function");
             }
@@ -146,6 +143,7 @@ function analyse_all() {
         Identifier: function(node, kind, c) {
             var pathForId = formPathFromId(node);
             var data = getDefinition(node.sourceFile.name, node.end, node.start);
+            var typeInfo = getType(node.sourceFile.name, node.end, node.start);
             var documentation = getDocumentation(node.sourceFile.name, node.end, node.start);
             var pathForDef = formPathFromData(data);
             if (pathForDef === null) {
@@ -154,11 +152,10 @@ function analyse_all() {
                 return;
             }
 
-            if (pathForDef === pathForId) {
+            if (pathForDef === pathForId || ((kind === "var") && typeInfo.type === 'module.exports')) {
                 //emit def here
-                var type = getType(node.sourceFile.name, node.end, node.start);
                 var defData = {
-                    Type: type,
+                    Type: typeInfo.type,
                     Keyword: kind,
                     Kind: kind,
                     Separator: " "
@@ -171,7 +168,7 @@ function analyse_all() {
                     DefStart: node.start,
                     DefEnd: node.end,
                     TreePath: pathForId,
-                    Data: data
+                    Data: defData
                 };
                 out.Defs.push(def);
 
@@ -187,7 +184,7 @@ function analyse_all() {
             } else {
                 //emit simple ref here
                 var ref = {
-                    DefPath: pathForId,
+                    DefPath: pathForDef,
                     Def: false,
                     File: node.sourceFile.name,
                     Start: node.start,
@@ -204,16 +201,14 @@ function analyse_all() {
                 }
 
                 out.Docs.push(docData);
-
             }
             // console.error("Identifier = ", node.name);
-            // // console.error("Here inside identifier = ", formPathFromId(node));
+            // console.error(data);
+            // console.error("Here inside identifier = ", formPathFromId(node));
             // console.error("Here inside id data = ", formPathFromData(data));
-            // // console.error(data);
             // console.error("TYPE = ", getType(node.sourceFile.name, node.end, node.start));
             // console.error("DOC = ", getDocumentation(node.sourceFile.name, node.end));
             // console.error("\n ========================== \n");
-
         }
     });
 
@@ -223,9 +218,10 @@ function analyse_all() {
         walk.recursive(file.ast, "ast", null, searchVisitor);
     });
 
-    console.error("DEFS = ", out.Defs);
-    console.error("REFS = ", out.Refs);
-    console.error("DOCS = ", out.Docs);
+    //console.error("DEFS = ", out.Defs);
+    // console.error("REFS = ", out.Refs);
+    // console.error("DOCS = ", out.Docs);
+    return out;
 }
 
 initTernServer(files);
